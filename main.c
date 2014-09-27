@@ -103,6 +103,18 @@ void test_kernel()
 	sgemm_naive_48_48_48(a, b, cs);
     sgemm_kernel_48_48_48(a, b, ct);
     verify(cs, ct);
+    
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+	for (i = 0; i < LOOP_TIME; i++)
+	{
+	    sgemm_naive_48_48_48(a, b, cs);
+	}
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+
+	time = get_time(&start, &end);
+	gflops = 2.0 * LOOP_TIME * 48 * 48 * 48 / time * 1e-9;
+
+	printf("naive version: time = %lfs, perf = %lf GFLOPS.\n", time, gflops);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 	for (i = 0; i < LOOP_TIME; i++)
@@ -114,7 +126,7 @@ void test_kernel()
 	time = get_time(&start, &end);
 	gflops = 2.0 * LOOP_TIME * 48 * 48 * 48 / time * 1e-9;
 
-	printf("time = %lfs, perf = %lf GFLOPS.\n", time, gflops);
+	printf("tuned version: time = %lfs, perf = %lf GFLOPS.\n", time, gflops);
 
     page_free(a, 48 * 48 * sizeof(float));
     page_free(b, 48 * 48 * sizeof(float));
