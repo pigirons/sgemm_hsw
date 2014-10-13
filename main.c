@@ -10,7 +10,7 @@
 #include <pthread.h>
 #include <sys/mman.h>
 
-#define LOOP_TIME 1000000
+#define LOOP_TIME (1048576)
 
 static double get_time(struct timespec *start, struct timespec *end)
 {
@@ -84,54 +84,96 @@ void test_kernel()
     int i;
 
 	struct timespec start, end;
-    double time, gflops;
+    double t, gflops;
 
     thread_bind(0);
 
 	float *a = (float*)page_alloc(48 * 48 * sizeof(float));
 	float *b = (float*)page_alloc(48 * 48 * sizeof(float));
-	float *cs = (float*)page_alloc(48 * 48 * sizeof(float));
-	float *ct = (float*)page_alloc(48 * 48 * sizeof(float));
+	float *cn = (float*)page_alloc(48 * 48 * sizeof(float));
+	float *ca = (float*)page_alloc(48 * 48 * sizeof(float));
+	float *cf = (float*)page_alloc(48 * 48 * sizeof(float));
+
+    srand(time(NULL));
 
 	for (i = 0; i < 48 * 48; i++)
 	{
 		a[i] = (float)rand() / RAND_MAX;
 		b[i] = (float)rand() / RAND_MAX;
 	}
+    memset(cn, 0, 48 * 48 * sizeof(float));
+    memset(ca, 0, 48 * 48 * sizeof(float));
+    memset(cf, 0, 48 * 48 * sizeof(float));
 
-	// warm up
-	sgemm_naive_48_48_48(a, b, cs);
-    sgemm_kernel_48_48_48(a, b, ct);
-    verify(cs, ct);
+	// check error
+	sgemm_naive_48_48_48(a, b, cn);
+    sgemm_kernel_avx_48_48_48(a, b, ca);
+    sgemm_kernel_fma_48_48_48(a, b, cf);
+
+    printf("AVX-tuned version check result:\n");
+    verify(cn, ca);
+    printf("FMA-tuned version check result:\n");
+    verify(cn, cf);
     
+    // naive version
+    // warm up
+    for (i = 0; i < 1024; i++)
+    {
+        sgemm_naive_48_48_48(a, b, cn);
+    }
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 	for (i = 0; i < LOOP_TIME; i++)
 	{
-	    sgemm_naive_48_48_48(a, b, cs);
+	    sgemm_naive_48_48_48(a, b, cn);
 	}
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 
-	time = get_time(&start, &end);
-	gflops = 2.0 * LOOP_TIME * 48 * 48 * 48 / time * 1e-9;
+	t = get_time(&start, &end);
+	gflops = 2.0 * LOOP_TIME * 48 * 48 * 48 / t * 1e-9;
 
-	printf("naive version: time = %lfs, perf = %lf GFLOPS.\n", time, gflops);
-
+	printf("Naive version: time = %lfs, perf = %lf GFLOPS.\n", t, gflops);
+ 
+    // avx-tuned version
+    // warm up
+	for (i = 0; i < 1024; i++)
+	{
+	    sgemm_kernel_avx_48_48_48(a, b, ca);
+	}
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 	for (i = 0; i < LOOP_TIME; i++)
 	{
-	    sgemm_kernel_48_48_48(a, b, ct);
+	    sgemm_kernel_avx_48_48_48(a, b, ca);
 	}
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 
-	time = get_time(&start, &end);
-	gflops = 2.0 * LOOP_TIME * 48 * 48 * 48 / time * 1e-9;
+	t = get_time(&start, &end);
+	gflops = 2.0 * LOOP_TIME * 48 * 48 * 48 / t * 1e-9;
 
-	printf("tuned version: time = %lfs, perf = %lf GFLOPS.\n", time, gflops);
+	printf("AVX-tuned version: time = %lfs, perf = %lf GFLOPS.\n", t, gflops);
+
+    // fma-tuned version
+    // warm up
+	for (i = 0; i < 1024; i++)
+	{
+	    sgemm_kernel_fma_48_48_48(a, b, cf);
+	}
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+	for (i = 0; i < LOOP_TIME; i++)
+	{
+	    sgemm_kernel_fma_48_48_48(a, b, cf);
+	}
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+
+	t = get_time(&start, &end);
+	gflops = 2.0 * LOOP_TIME * 48 * 48 * 48 / t * 1e-9;
+
+	printf("FMA-tuned version: time = %lfs, perf = %lf GFLOPS.\n", t, gflops);
 
     page_free(a, 48 * 48 * sizeof(float));
     page_free(b, 48 * 48 * sizeof(float));
-    page_free(cs, 48 * 48 * sizeof(float));
-    page_free(ct, 48 * 48 * sizeof(float));
+    page_free(cn, 48 * 48 * sizeof(float));
+    page_free(ca, 48 * 48 * sizeof(float));
+    page_free(cf, 48 * 48 * sizeof(float));
 }
 
 int main(int argc, char *argv[])
