@@ -1605,7 +1605,6 @@ loop_avx:
     vmulps %ymm12, %ymm15, %ymm13
     vaddps %ymm13, %ymm11, %ymm11
 
-
     addq $2, %rax
     addq $384, %rdi
     vmovaps %ymm0, 0(%rdx)
@@ -2651,7 +2650,6 @@ loop_fma:
     vmovaps 9184(%rsi), %ymm12
     vfmadd231ps %ymm12, %ymm14, %ymm5
     vfmadd231ps %ymm12, %ymm15, %ymm11
-
 
     addq $2, %rax
     addq $384, %rdi

@@ -31,7 +31,6 @@ void sgemm_gen_avx_48_48_48(FILE *fp)
         }
         fprintf(fp, "\n");
     }
-    fprintf(fp, "\n");
 
     fprintf(fp, "    addq $2, %%rax\n");
     fprintf(fp, "    addq $384, %%rdi\n");
@@ -75,7 +74,6 @@ void sgemm_gen_fma_48_48_48(FILE *fp)
         fprintf(fp, "\n");
     }
 
-    fprintf(fp, "\n");
     fprintf(fp, "    addq $2, %%rax\n");
     fprintf(fp, "    addq $384, %%rdi\n");
     
