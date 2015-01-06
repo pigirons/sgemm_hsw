@@ -1,14 +1,14 @@
 sgemm_hsw
 =========
 
-This is a sgemm implementation on Intel Haswell
+This is a sgemm implementation on Intel Haswell.
 
 Test Environment:
 Intel Core i3 4130 @ 3.4GHz.
 Using one core.
 
 Haswell theoretical peak performance:
-3.4GHz * (8 * 2 + 8 * 2) = 108.8 GFLOPS
+3.4GHz * (8 * 2 + 8 * 2) = 108.8 GFLOPS.
 
 Test Result:
 AVX-tuned version check result:
