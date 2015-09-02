@@ -4,7 +4,7 @@
 void sgemm_gen_avx_48_48_48(FILE *fp)
 {
     fprintf(fp, "sgemm_kernel_avx_48_48_48:\n");
-    fprintf(fp, "    xorq %rax, %rax\n");
+    fprintf(fp, "    xorq %%rax, %%rax\n");
     fprintf(fp, "    vxorps %%ymm14, %%ymm14, %%ymm14\n");
     fprintf(fp, "    vxorps %%ymm15, %%ymm15, %%ymm15\n\n");
     fprintf(fp, "loop_avx:\n");
@@ -79,11 +79,11 @@ void sgemm_gen_fma_48_48_48(FILE *fp)
     
     for (int i = 0; i < 12; i++)
     {
-        fprintf(fp, "    vmovaps %%ymm%d, %d(%rdx)\n", i, i * 32);
+        fprintf(fp, "    vmovaps %%ymm%d, %d(%%rdx)\n", i, i * 32);
     }
 
     fprintf(fp, "    addq $384, %%rdx\n");
-    fprintf(fp, "    cmpq $48, %rax\n");
+    fprintf(fp, "    cmpq $48, %%rax\n");
     fprintf(fp, "    jl loop_fma\n");
 
     fprintf(fp, "    ret\n\n");
