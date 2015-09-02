@@ -10,7 +10,8 @@
 #include <pthread.h>
 #include <sys/mman.h>
 
-#define LOOP_TIME (1048576)
+#define NAIVE_LOOP_TIME (16384)
+#define LOOP_TIME (524288)
 
 static double get_time(struct timespec *start, struct timespec *end)
 {
@@ -117,25 +118,25 @@ void test_kernel()
 
     // naive version
     // warm up
-    for (i = 0; i < 1024; i++)
+    for (i = 0; i < NAIVE_LOOP_TIME; i++)
     {
         sgemm_naive_48_48_48(a, b, cn);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    for (i = 0; i < LOOP_TIME; i++)
+    for (i = 0; i < NAIVE_LOOP_TIME; i++)
     {
         sgemm_naive_48_48_48(a, b, cn);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 
     t = get_time(&start, &end);
-    gflops = 2.0 * LOOP_TIME * 48 * 48 * 48 / t * 1e-9;
+    gflops = 2.0 * NAIVE_LOOP_TIME * 48 * 48 * 48 / t * 1e-9;
 
     printf("Naive version: time = %lfs, perf = %lf GFLOPS.\n", t, gflops);
 
     // avx-tuned version
     // warm up
-    for (i = 0; i < 1024; i++)
+    for (i = 0; i < LOOP_TIME; i++)
     {
         sgemm_kernel_avx_48_48_48(a, b, ca);
     }
@@ -153,7 +154,7 @@ void test_kernel()
 
     // fma-tuned version
     // warm up
-    for (i = 0; i < 1024; i++)
+    for (i = 0; i < LOOP_TIME; i++)
     {
         sgemm_kernel_fma_48_48_48(a, b, cf);
     }
