@@ -1,5 +1,4 @@
 #define _GNU_SOURCE
-#include "sgemm_kernel.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,8 +9,19 @@
 #include <pthread.h>
 #include <sys/mman.h>
 
-#define NAIVE_LOOP_TIME (16384)
-#define LOOP_TIME (524288)
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void sgemm_kernel_x64_fma_m4n24(float *a,
+    float *b,
+    float *c,
+    int m,
+    int k);
+
+#ifdef __cplusplus
+}
+#endif
 
 static double get_time(struct timespec *start, struct timespec *end)
 {
@@ -47,139 +57,98 @@ static void page_free(void *mem, size_t size)
     munmap(mem, size);
 }
 
-void sgemm_naive_48_48_48(float *a, float *b, float *c)
+void save_bin(const char *file_name, float *rst, int num)
 {
-    int i, j, k;
-    for (i = 0; i < 48; i++)
+    FILE *fp = fopen(file_name, "wb");
+    fwrite(rst, num, sizeof(float), fp);
+    fclose(fp);
+}
+
+void sgemm_naive(float *a, float *b, float *c, int m, int n, int k)
+{
+    int i, j, kk;
+    for (i = 0; i < m; i++)
     {
-        for (j = 0; j < 48; j++)
+        for (j = 0; j < n; j++)
         {
-            for (k = 0; k < 48; k++)
+            for (kk = 0; kk < k; kk++)
             {
-                c[i * 48 + j] += a[i * 48 + k] * b[k * 48 + j];
+                c[i * n + j] += a[i * k + kk] * b[kk * n + j];
             }
         }
     }
 }
 
-void verify(float *cs, float *ct)
+int main(int argc, char *argv[])
 {
     int i;
-    float err_rele = (cs[0] - ct[0]) / cs[0];
-    float min = err_rele;
-    float max = err_rele;
-    float avg = err_rele;
-    for (i = 1; i < 48 * 48; i++)
-    {
-        err_rele = fabsf(cs[i] - ct[i]) / cs[i];
-        min = err_rele < min ? err_rele : min;
-        max = err_rele > max ? err_rele : max;
-        avg += err_rele;
-    }
-    avg /= (48 * 48);
-    printf("avg error: %e, max error: %e, min error: %e.\n", avg, max, min);
-}
 
-void test_kernel()
-{
-    int i;
+    if (argc != 3)
+    {
+        fprintf(stderr, "Usage: %s m k\n", argv[0]);
+        return 0;
+    }
+
+    int m = atoi(argv[1]);
+    int k = atoi(argv[2]);
+    long comp = 2L * m * k * 24L;
+    int loop_time = (int)(2e11 / comp);
 
     struct timespec start, end;
     double t, gflops;
 
     thread_bind(0);
 
-    float *a = (float*)page_alloc(48 * 48 * sizeof(float));
-    float *b = (float*)page_alloc(48 * 48 * sizeof(float));
-    float *cn = (float*)page_alloc(48 * 48 * sizeof(float));
-    float *ca = (float*)page_alloc(48 * 48 * sizeof(float));
-    float *cf = (float*)page_alloc(48 * 48 * sizeof(float));
+    float *a = (float*)page_alloc(m * k * sizeof(float));
+    float *b = (float*)page_alloc(k * 24 * sizeof(float));
+    float *c1 = (float*)page_alloc(m * 24 * sizeof(float));
+    float *c2 = (float*)page_alloc(m * 24 * sizeof(float));
 
     srand(time(NULL));
 
-    for (i = 0; i < 48 * 48; i++)
+    for (i = 0; i < m * k; i++)
     {
-        a[i] = (float)rand() / RAND_MAX;
-        b[i] = (float)rand() / RAND_MAX;
+        a[i] = (float)rand() / (float)RAND_MAX;
     }
-    memset(cn, 0, 48 * 48 * sizeof(float));
-    memset(ca, 0, 48 * 48 * sizeof(float));
-    memset(cf, 0, 48 * 48 * sizeof(float));
-
-    // check error
-    sgemm_naive_48_48_48(a, b, cn);
-    sgemm_kernel_avx_48_48_48(a, b, ca);
-    sgemm_kernel_fma_48_48_48(a, b, cf);
-
-    printf("AVX-tuned version check result:\n");
-    verify(cn, ca);
-    printf("FMA-tuned version check result:\n");
-    verify(cn, cf);
-
-    // naive version
-    // warm up
-    for (i = 0; i < NAIVE_LOOP_TIME; i++)
+    for (i = 0; i < k * 24; i++)
     {
-        sgemm_naive_48_48_48(a, b, cn);
+        b[i] = (float)rand() / (float)RAND_MAX;
     }
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    for (i = 0; i < NAIVE_LOOP_TIME; i++)
-    {
-        sgemm_naive_48_48_48(a, b, cn);
-    }
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-
-    t = get_time(&start, &end);
-    gflops = 2.0 * NAIVE_LOOP_TIME * 48 * 48 * 48 / t * 1e-9;
-
-    printf("Naive version: time = %lfs, perf = %lf GFLOPS.\n", t, gflops);
-
-    // avx-tuned version
-    // warm up
-    for (i = 0; i < LOOP_TIME; i++)
-    {
-        sgemm_kernel_avx_48_48_48(a, b, ca);
-    }
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    for (i = 0; i < LOOP_TIME; i++)
-    {
-        sgemm_kernel_avx_48_48_48(a, b, ca);
-    }
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-
-    t = get_time(&start, &end);
-    gflops = 2.0 * LOOP_TIME * 48 * 48 * 48 / t * 1e-9;
-
-    printf("AVX-tuned version: time = %lfs, perf = %lf GFLOPS.\n", t, gflops);
 
     // fma-tuned version
     // warm up
-    for (i = 0; i < LOOP_TIME; i++)
+    for (i = 0; i < loop_time; i++)
     {
-        sgemm_kernel_fma_48_48_48(a, b, cf);
+        sgemm_kernel_x64_fma_m4n24(a, b, c2, m, k);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    for (i = 0; i < LOOP_TIME; i++)
+    for (i = 0; i < loop_time; i++)
     {
-        sgemm_kernel_fma_48_48_48(a, b, cf);
+        sgemm_kernel_x64_fma_m4n24(a, b, c2, m, k);
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 
-    t = get_time(&start, &end);
-    gflops = 2.0 * LOOP_TIME * 48 * 48 * 48 / t * 1e-9;
+    t = get_time(&start, &end) / loop_time;
+    gflops = (double)comp / t * 1e-9;
 
-    printf("FMA-tuned version: time = %lfs, perf = %lf GFLOPS.\n", t, gflops);
+    printf("sgemm_kernel_x64_fma(%d, %d, %d): time = %lf us, perf = %lf GFLOPS.\n", m, 24, k, t * 1e6, gflops);
 
-    page_free(a, 48 * 48 * sizeof(float));
-    page_free(b, 48 * 48 * sizeof(float));
-    page_free(cn, 48 * 48 * sizeof(float));
-    page_free(ca, 48 * 48 * sizeof(float));
-    page_free(cf, 48 * 48 * sizeof(float));
-}
+    memset(c1, 0, m * 24 * sizeof(float));
+    memset(c2, 0, m * 24 * sizeof(float));
+    sgemm_naive(a, b, c1, m, 24, k);
+    sgemm_kernel_x64_fma_m4n24(a, b, c2, m, k);
+    save_bin("naive.bin", c1, m * 24);
+    save_bin("tuned.bin", c2, m * 24);
 
-int main(int argc, char *argv[])
-{
-    test_kernel();
+    printf("sgemm_naive result: naive.bin\n");
+    printf("sgemm_kernel_x64_fma_m4n24 result: tuned.bin\n");
+    printf("Use fp_diff(https://github.com/pigirons/fp_diff) to compare the results.\n");
+
+    page_free(a, m * k * sizeof(float));
+    page_free(b, k * 24 * sizeof(float));
+    page_free(c1, m * 24 * sizeof(float));
+    page_free(c2, m * 24 * sizeof(float));
+    
     return 0;
 }
 
